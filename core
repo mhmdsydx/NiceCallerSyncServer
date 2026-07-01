@@ -1,8 +1,0 @@
-__init__.py
-database.py
-logger.py
-normalizer.py
-sync_engine.py
-backup.py
-reindex.py
-optimize.py
