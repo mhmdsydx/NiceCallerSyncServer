@@ -31,3 +31,4 @@ def error(msg):
     logger.error(msg)
 
     print(msg)
+    
