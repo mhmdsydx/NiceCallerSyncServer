@@ -89,3 +89,176 @@ class SyncEngine:
         }
 
         info(f"Loaded {len(self.label_index)} labels.")
+
+    def insert_phone(self, number):
+
+        phone_id = self.next_phone_id
+
+        self.call.execute(
+
+            """
+            INSERT INTO PhoneNumber
+            (
+                id,
+                number
+            )
+            VALUES
+            (
+                ?,
+                ?
+            )
+            """,
+
+            (
+                phone_id,
+                int(number)
+            )
+
+        )
+
+        self.phone_index[number] = phone_id
+
+        self.next_phone_id += 1
+
+        return phone_id
+
+    def insert_label(self, label):
+
+        if label in self.label_index:
+
+            return self.label_index[label]
+
+        label_id = self.next_label_id
+
+        self.call.execute(
+
+            """
+            INSERT INTO Label
+            (
+                id,
+                localized_label
+            )
+            VALUES
+            (
+                ?,
+                ?
+            )
+            """,
+
+            (
+                label_id,
+                label
+            )
+
+        )
+
+        self.label_index[label] = label_id
+
+        self.next_label_id += 1
+
+        return label_id
+
+    def insert_identification(self, phone_id, label_id):
+
+        self.call.execute(
+
+            """
+            INSERT INTO PhoneNumberIdentificationEntry
+            (
+                id,
+                extension_id,
+                phone_number_id,
+                label_id
+            )
+            VALUES
+            (
+                ?,
+                ?,
+                ?,
+                ?
+            )
+            """,
+
+            (
+                self.next_entry_id,
+                self.extension_id,
+                phone_id,
+                label_id
+            )
+
+        )
+
+        self.next_entry_id += 1
+
+    def sync(self):
+
+        self.open()
+
+        self.load_extension()
+
+        self.load_next_ids()
+
+        self.load_phone_index()
+
+        self.load_label_index()
+
+        rows = self.load_cache()
+
+        self.call.begin()
+
+        try:
+
+            last_time = 0
+
+            for row in rows:
+
+                number = normalize(
+
+                    row["phone"],
+                    row["country"]
+                )
+
+                if not number:
+
+                    continue
+
+                label = row["name"]
+
+                cached = row["cached_at"]
+
+                if cached > last_time:
+
+                    last_time = cached
+
+                if number in self.phone_index:
+
+                    self.stats["skipped"] += 1
+
+                    continue
+
+                phone_id = self.insert_phone(number)
+
+                label_id = self.insert_label(label)
+
+                self.insert_identification(
+                    phone_id,
+                    label_id
+                )
+
+                self.stats["added"] += 1
+
+            self.call.commit()
+
+            self.save_state(last_time)
+
+        except Exception:
+
+            self.call.rollback()
+
+            raise
+
+        finally:
+
+            self.close()
+
+
